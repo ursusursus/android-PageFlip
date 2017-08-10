@@ -17,12 +17,14 @@ package com.eschao.android.widget.sample.pageflip;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
-import android.widget.Toast;
+import android.util.Log;
 
 import com.eschao.android.widget.pageflip.Page;
 import com.eschao.android.widget.pageflip.PageFlip;
@@ -33,10 +35,10 @@ import com.eschao.android.widget.pageflip.PageFlipState;
  * <p>
  * Every page need 2 texture in single page mode:
  * <ul>
- *     <li>First texture: current page content</li>
- *     <li>Back texture: back of front content, it is same with first texture
- *     </li>
- *     <li>Second texture: next page content</li>
+ * <li>First texture: current page content</li>
+ * <li>Back texture: back of front content, it is same with first texture
+ * </li>
+ * <li>Second texture: next page content</li>
  * </ul>
  * </p>
  *
@@ -45,52 +47,114 @@ import com.eschao.android.widget.pageflip.PageFlipState;
 
 public class SinglePageRender extends PageRender {
 
+    private final Paint mPaint;
+
+    //private final Handler mHandler2 = new Handler();
+    private final PageFlipView mPageFlipView;
+
     /**
      * Constructor
+     *
      * @see {@link #PageRender(Context, PageFlip, Handler, int)}
      */
     public SinglePageRender(Context context, PageFlip pageFlip,
-                            Handler handler, int pageNo) {
+                            Handler handler, int pageNo, PageFlipView pageFlipView) {
         super(context, pageFlip, handler, pageNo);
+        mPageFlipView = pageFlipView;
+
+        Paint p = new Paint();
+        p.setFilterBitmap(true);
+        p.setColor(Color.WHITE);
+        p.setStrokeWidth(1);
+        p.setAntiAlias(true);
+        p.setShadowLayer(5.0f, 8.0f, 8.0f, Color.BLACK);
+        mPaint = p;
     }
 
     /**
      * Draw frame
      */
-    public void onDrawFrame() {
+    @Override public void onDrawFrame() {
+//        Log.d("Default", "onDrawFrame=" + mDrawCommand);
         // 1. delete unused textures
         mPageFlip.deleteUnusedTextures();
-        Page page = mPageFlip.getFirstPage();
+        final Page page = mPageFlip.getFirstPage();
+        Log.d("Default", "firstPage=" + page);
+        Log.d("Default", "secondPage=" + mPageFlip.getSecondPage());
 
         // 2. handle drawing command triggered from finger moving and animating
         if (mDrawCommand == DRAW_MOVING_FRAME ||
-            mDrawCommand == DRAW_ANIMATING_FRAME) {
+                mDrawCommand == DRAW_ANIMATING_FRAME) {
+            // Log.d("Default", "DRAW_MOVING_FRAME");
             // is forward flip
             if (mPageFlip.getFlipState() == PageFlipState.FORWARD_FLIP) {
                 // check if second texture of first page is valid, if not,
                 // create new one
                 if (!page.isSecondTextureSet()) {
-                    drawPage(mPageNo + 1);
+                    Log.d("Default", "redraw A=" + Thread.currentThread().getName());
+                    drawPage(mPageNo + 1, new Runnable() {
+                        @Override public void run() {
+                            queueOnGlThread(new Runnable() {
+                                @Override public void run() {
+                                    Log.d("Default", "redraw A=" + Thread.currentThread().getName());
+                                    page.setSecondTexture(mBitmap);
+                                    mPageFlip.drawFlipFrame();
+                                }
+                            });
+                        }
+                    });
                     page.setSecondTexture(mBitmap);
-                }
-            }
-            // in backward flip, check first texture of first page is valid
-            else if (!page.isFirstTextureSet()) {
-                drawPage(--mPageNo);
-                page.setFirstTexture(mBitmap);
-            }
+                    mPageFlip.drawFlipFrame();
 
-            // draw frame for page flip
-            mPageFlip.drawFlipFrame();
+                } else {
+                    mPageFlip.drawFlipFrame();
+                }
+            } else if (!page.isFirstTextureSet()) {
+                // in backward flip, check first texture of first page is valid
+                Log.d("Default", "redraw B=" + Thread.currentThread().getName());
+                drawPage(--mPageNo, new Runnable() {
+                    @Override public void run() {
+                        queueOnGlThread(new Runnable() {
+                            @Override public void run() {
+                                Log.d("Default", "redraw B" + Thread.currentThread().getName());
+                                page.setFirstTexture(mBitmap);
+                                mPageFlip.drawFlipFrame();
+                            }
+                        });
+                        page.setFirstTexture(mBitmap);
+                        mPageFlip.drawFlipFrame();
+                    }
+                });
+            } else {
+                // draw frame for page flip
+                mPageFlip.drawFlipFrame();
+
+            }
         }
         // draw stationary page without flipping
         else if (mDrawCommand == DRAW_FULL_PAGE) {
+            Log.d("Default", "DRAW_FULL_PAGE");
             if (!page.isFirstTextureSet()) {
-                drawPage(mPageNo);
+                Log.d("Default", "redraw C=" + Thread.currentThread().getName());
+                drawPage(mPageNo, new Runnable() {
+                    @Override public void run() {
+                        queueOnGlThread(new Runnable() {
+                            @Override public void run() {
+                                Log.d("Default", "redraw C=" + Thread.currentThread().getName());
+                                page.setFirstTexture(mBitmap);
+                                mPageFlip.drawFlipFrame();
+                            }
+                        });
+                    }
+                });
                 page.setFirstTexture(mBitmap);
+                mPageFlip.drawFlipFrame();
+
+            } else {
+                mPageFlip.drawPageFrame();
+
             }
 
-            mPageFlip.drawPageFrame();
         }
 
         // 3. send message to main thread to notify drawing is ended so that
@@ -103,13 +167,18 @@ public class SinglePageRender extends PageRender {
         mHandler.sendMessage(msg);
     }
 
+    private void queueOnGlThread(Runnable runnable) {
+        mPageFlipView.queueEvent(runnable);
+        mPageFlipView.requestRender();
+    }
+
     /**
      * Handle GL surface is changed
      *
-     * @param width surface width
+     * @param width  surface width
      * @param height surface height
      */
-    public void onSurfaceChanged(int width, int height) {
+    @Override public void onSurfaceChanged(int width, int height) {
         // recycle bitmap resources if need
         if (mBackgroundBitmap != null) {
             mBackgroundBitmap.recycle();
@@ -122,8 +191,8 @@ public class SinglePageRender extends PageRender {
         // create bitmap and canvas for page
         //mBackgroundBitmap = background;
         Page page = mPageFlip.getFirstPage();
-        mBitmap = Bitmap.createBitmap((int)page.width(), (int)page.height(),
-                                      Bitmap.Config.ARGB_8888);
+        mBitmap = Bitmap.createBitmap((int) page.width(), (int) page.height(),
+                Bitmap.Config.ARGB_8888);
         mCanvas.setBitmap(mBitmap);
         LoadBitmapTask.get(mContext).set(width, height, 1);
     }
@@ -137,7 +206,7 @@ public class SinglePageRender extends PageRender {
      * @param what event type
      * @return ture if need render again
      */
-    public boolean onEndedDrawing(int what) {
+    @Override public boolean onEndedDrawing(int what) {
         if (what == DRAW_ANIMATING_FRAME) {
             boolean isAnimating = mPageFlip.animating();
             // continue animating
@@ -171,45 +240,72 @@ public class SinglePageRender extends PageRender {
      *
      * @param number page number
      */
-    private void drawPage(int number) {
-        final int width = mCanvas.getWidth();
-        final int height = mCanvas.getHeight();
-        Paint p = new Paint();
-        p.setFilterBitmap(true);
+    private void drawPage(final int number, final Runnable end) {
+        Log.d("Default", "number=" + number);
+        final Canvas canvas = mCanvas;
+        final Paint p = mPaint;
+        final int width = canvas.getWidth();
+        final int height = canvas.getHeight();
 
+        canvas.drawColor(Color.CYAN);
         // 1. draw background bitmap
-        Bitmap background = LoadBitmapTask.get(mContext).getBitmap();
-        Rect rect = new Rect(0, 0, width, height);
-        mCanvas.drawBitmap(background, null, rect, p);
-        background.recycle();
-        background = null;
+        LoadBitmapTask.get(mContext).getBitmap(number, new LoadBitmapTask.BitmapLoaded() {
+            @Override public void onBitmapLoaded(final Bitmap bitmap) {
+                Log.d("Default", "onBitmapLoaded=" + number + " t=" + Thread.currentThread().getName());
+                Rect rect = new Rect(0, 0, width, height);
+                canvas.drawBitmap(bitmap, null, rect, mPaint);
+                bitmap.recycle();
+
+                // 2. draw page number
+                p.setTextSize(calcFontSize(80));
+                String text = String.valueOf(number);
+                float textWidth = p.measureText(text);
+                float y = height - p.getTextSize() - 20;
+                canvas.drawText(text, (width - textWidth) / 2, y, p);
+
+                if (number <= 1) {
+                    String firstPage = "The First Page";
+                    p.setTextSize(calcFontSize(16));
+                    float w = p.measureText(firstPage);
+                    float h = p.getTextSize();
+                    canvas.drawText(firstPage, (width - w) / 2, y + 5 + h, p);
+                } else if (number >= MAX_PAGES) {
+                    String lastPage = "The Last Page";
+                    p.setTextSize(calcFontSize(16));
+                    float w = p.measureText(lastPage);
+                    float h = p.getTextSize();
+                    canvas.drawText(lastPage, (width - w) / 2, y + 5 + h, p);
+                }
+                end.run();
+//                mHandler2.post(new Runnable() {
+//                    @Override public void run() {
+//                        end.run();
+//                    }
+//                });
+            }
+        });
 
         // 2. draw page number
-        int fontSize = calcFontSize(80);
-        p.setColor(Color.WHITE);
-        p.setStrokeWidth(1);
-        p.setAntiAlias(true);
-        p.setShadowLayer(5.0f, 8.0f, 8.0f, Color.BLACK);
-        p.setTextSize(fontSize);
+        p.setTextSize(calcFontSize(80));
         String text = String.valueOf(number);
         float textWidth = p.measureText(text);
         float y = height - p.getTextSize() - 20;
-        mCanvas.drawText(text, (width - textWidth) / 2, y, p);
+        canvas.drawText(text, (width - textWidth) / 2, y, p);
 
         if (number <= 1) {
             String firstPage = "The First Page";
             p.setTextSize(calcFontSize(16));
             float w = p.measureText(firstPage);
             float h = p.getTextSize();
-            mCanvas.drawText(firstPage, (width - w) / 2, y + 5 + h, p);
-        }
-        else if (number >= MAX_PAGES) {
+            canvas.drawText(firstPage, (width - w) / 2, y + 5 + h, p);
+        } else if (number >= MAX_PAGES) {
             String lastPage = "The Last Page";
             p.setTextSize(calcFontSize(16));
             float w = p.measureText(lastPage);
             float h = p.getTextSize();
-            mCanvas.drawText(lastPage, (width - w) / 2, y + 5 + h, p);
+            canvas.drawText(lastPage, (width - w) / 2, y + 5 + h, p);
         }
+        end.run();
     }
 
     /**
@@ -218,7 +314,7 @@ public class SinglePageRender extends PageRender {
      * @return true if it can flip forward
      */
     public boolean canFlipForward() {
-        return (mPageNo < MAX_PAGES);
+        return (mPageNo < MAX_PAGES - 1);
     }
 
     /**
@@ -227,11 +323,10 @@ public class SinglePageRender extends PageRender {
      * @return true if it can flip backward
      */
     public boolean canFlipBackward() {
-        if (mPageNo > 1) {
+        if (mPageNo > 0) {
             mPageFlip.getFirstPage().setSecondTextureWithFirst();
             return true;
-        }
-        else {
+        } else {
             return false;
         }
     }

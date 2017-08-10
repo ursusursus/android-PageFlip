@@ -20,6 +20,7 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
+import android.os.SystemClock;
 import android.util.Log;
 
 import java.util.LinkedList;
@@ -100,13 +101,53 @@ public final class LoadBitmapTask implements Runnable {
         };
     }
 
+    public interface BitmapLoaded {
+        void onBitmapLoaded(Bitmap bitmap);
+    }
+
     /**
      * Acquire a bitmap to show
      * <p>If there is no cached bitmap, it will load one immediately</p>
      *
      * @return bitmap
      */
-    public Bitmap getBitmap() {
+    public void getBitmap(final int newNo, final BitmapLoaded callback) {
+////        callback.onBitmapLoaded(getRandomBitmap(newNo));
+        new Thread(new Runnable() {
+            @Override public void run() {
+                Log.d("Default", "loading=" + newNo);
+                SystemClock.sleep(2000);
+                callback.onBitmapLoaded(getRandomBitmap(newNo));
+                Log.d("Default", "finished loading=" + newNo);
+            }
+        }).start();
+//        Bitmap b = null;
+//        synchronized (this) {
+//            if (mQueue.size() > 0) {
+//                b = mQueue.pop();
+//            }
+//
+//            notify();
+//        }
+//
+//        if (b == null) {
+//            Log.d(TAG, "Load bitmap instantly!");
+//            b = getRandomBitmap(newNo);
+//        }
+//
+//        return b;
+    }
+
+    public Bitmap getBitmap0(final int newNo, final BitmapLoaded callback) {
+////        callback.onBitmapLoaded(getRandomBitmap(newNo));
+//        new Thread(new Runnable() {
+//            @Override public void run() {
+//                Log.d("Default", "loading=" + newNo);
+//                SystemClock.sleep(2000);
+//                callback.onBitmapLoaded(getRandomBitmap(newNo));
+//                Log.d("Default", "finished loading=" + newNo);
+//            }
+//        }).start();
         Bitmap b = null;
         synchronized (this) {
             if (mQueue.size() > 0) {
@@ -118,7 +159,7 @@ public final class LoadBitmapTask implements Runnable {
 
         if (b == null) {
             Log.d(TAG, "Load bitmap instantly!");
-            b = getRandomBitmap();
+            b = getRandomBitmap(newNo);
         }
 
         return b;
@@ -209,14 +250,15 @@ public final class LoadBitmapTask implements Runnable {
      * Load bitmap from resources randomly
      *
      * @return bitmap object
+     * @param newNo
      */
-    private Bitmap getRandomBitmap() {
-        int newNo = mPreRandomNo;
-        while (newNo == mPreRandomNo) {
-            newNo = mBGRandom.nextInt(BG_COUNT);
-        }
-
-        mPreRandomNo = newNo;
+    private Bitmap getRandomBitmap(int newNo) {
+//        int newNo = mPreRandomNo;
+//        while (newNo == mPreRandomNo) {
+//            newNo = mBGRandom.nextInt(BG_COUNT);
+//        }
+//
+//        mPreRandomNo = newNo;
         int resId = mPortraitBGs[mBGSizeIndex][newNo];
         Bitmap b = BitmapFactory.decodeResource(mResources, resId);
         if (mIsLandscape) {
@@ -242,30 +284,30 @@ public final class LoadBitmapTask implements Runnable {
     }
 
     public void run() {
-        while (true) {
-            synchronized (this) {
-                // check if ask thread stopping
-                if (mStop) {
-                    cleanQueue();
-                    break;
-                }
-
-                // load bitmap only when no cached bitmap in queue
-                int size = mQueue.size();
-                if (size < 1) {
-                    for (int i = 0; i < mQueueMaxSize; ++i) {
-                        Log.d(TAG, "Load Queue:" + i + " in background!");
-                        mQueue.push(getRandomBitmap());
-                    }
-                }
-
-                // wait to be awaken
-                try {
-                    wait();
-                }
-                catch (InterruptedException e) {
-                }
-            }
-        }
+//        while (true) {
+//            synchronized (this) {
+//                // check if ask thread stopping
+//                if (mStop) {
+//                    cleanQueue();
+//                    break;
+//                }
+//
+//                // load bitmap only when no cached bitmap in queue
+//                int size = mQueue.size();
+//                if (size < 1) {
+//                    for (int i = 0; i < mQueueMaxSize; ++i) {
+//                        Log.d(TAG, "Load Queue:" + i + " in background!");
+//                        mQueue.push(getRandomBitmap(55));
+//                    }
+//                }
+//
+//                // wait to be awaken
+//                try {
+//                    wait();
+//                }
+//                catch (InterruptedException e) {
+//                }
+//            }
+//        }
     }
 }
