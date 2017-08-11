@@ -22,7 +22,6 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Message;
-import android.widget.Toast;
 
 import com.eschao.android.widget.pageflip.Page;
 import com.eschao.android.widget.pageflip.PageFlip;
@@ -79,13 +78,13 @@ public class DoublePagesRender extends PageRender {
         // create it with relative content
         if (!first.isFirstTextureSet()) {
             drawPage(first.isLeftPage() ? mPageNo : mPageNo + 1);
-            first.setFirstTexture(mBitmap);
+            first.setFirstTexture(mBitmap, false);
         }
 
         // 4. check if the first texture is valid for second page
         if (!second.isFirstTextureSet()) {
             drawPage(second.isLeftPage() ? mPageNo : mPageNo + 1);
-            second.setFirstTexture(mBitmap);
+            second.setFirstTexture(mBitmap, false);
         }
 
         // 5. handle drawing command triggered from finger moving and animating
@@ -101,7 +100,7 @@ public class DoublePagesRender extends PageRender {
             // check the second texture of first page is valid.
             if (!first.isSecondTextureSet()) {
                 drawPage(first.isLeftPage() ? mPageNo - 2 : mPageNo + 3);
-                first.setSecondTexture(mBitmap);
+                first.setSecondTexture(mBitmap, false);
             }
 
             // draw frame for page flip
@@ -129,7 +128,7 @@ public class DoublePagesRender extends PageRender {
      * @param height surface height
      */
     public void onSurfaceChanged(int width, int height) {
-        // recycle bitmap resources if need
+        // recycleRest bitmap resources if need
         if (mBackgroundBitmap != null) {
             mBackgroundBitmap.recycle();
         }
@@ -205,7 +204,7 @@ public class DoublePagesRender extends PageRender {
         p.setFilterBitmap(true);
 
         // 1. draw background bitmap
-        Bitmap background = LoadBitmapTask.get(mContext).getBitmap();
+        Bitmap background = null; // LoadBitmapTask.get(mContext).getBitmap(number);
         Rect rect = new Rect(0, 0, width, height);
         if (width > height) {
             mCanvas.rotate(90);

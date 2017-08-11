@@ -20,10 +20,16 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
+import android.os.SystemClock;
 import android.util.Log;
 
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * A singleton thread task to load bitmap
@@ -41,6 +47,7 @@ public final class LoadBitmapTask implements Runnable {
     final static int MEDIUM_BG = 1;
     final static int LARGE_BG = 2;
     final static int BG_COUNT = 10;
+    private final ExecutorService mThreadPool;
 
     int mBGSizeIndex;
     int mQueueMaxSize;
@@ -50,7 +57,9 @@ public final class LoadBitmapTask implements Runnable {
     Random mBGRandom;
     Resources mResources;
     Thread mThread;
-    LinkedList<Bitmap> mQueue;
+    // LinkedList<Bitmap> mQueue;
+    HashMap<Integer, Bitmap> mCache;
+    LinkedList<Integer> mTaskmQueue;
     int[][] mPortraitBGs;
 
     /**
@@ -61,7 +70,7 @@ public final class LoadBitmapTask implements Runnable {
      */
     public static LoadBitmapTask get(Context context) {
         if (__object == null) {
-           __object = new LoadBitmapTask(context);
+            __object = new LoadBitmapTask(context);
         }
         return __object;
     }
@@ -72,6 +81,7 @@ public final class LoadBitmapTask implements Runnable {
      * @param context Android context
      */
     private LoadBitmapTask(Context context) {
+        mThreadPool = Executors.newFixedThreadPool(3);
         mResources = context.getResources();
         mBGRandom = new Random();
         mBGSizeIndex = SMALL_BG;
@@ -80,23 +90,25 @@ public final class LoadBitmapTask implements Runnable {
         mPreRandomNo = 0;
         mIsLandscape = false;
         mQueueMaxSize = 1;
-        mQueue = new LinkedList<Bitmap>();
+        // mQueue = new LinkedList<>();
+        mCache = new HashMap<>();
+        mTaskmQueue = new LinkedList<>();
 
         // init all available bitmaps
-        mPortraitBGs = new int[][] {
-            new int[] {R.drawable.p1_480, R.drawable.p2_480, R.drawable.p3_480,
-                       R.drawable.p4_480, R.drawable.p5_480, R.drawable.p6_480,
-                       R.drawable.p7_480, R.drawable.p8_480, R.drawable.p9_480,
-                       R.drawable.p10_480},
-            new int[] {R.drawable.p1_720, R.drawable.p2_720, R.drawable.p3_720,
-                       R.drawable.p4_720, R.drawable.p5_720, R.drawable.p6_720,
-                       R.drawable.p7_720, R.drawable.p8_720, R.drawable.p9_720,
-                       R.drawable.p10_720},
-            new int[] {R.drawable.p1_1080, R.drawable.p2_1080,
-                       R.drawable.p3_1080, R.drawable.p4_1080,
-                       R.drawable.p5_1080, R.drawable.p6_1080,
-                       R.drawable.p7_1080, R.drawable.p8_1080,
-                       R.drawable.p9_1080, R.drawable.p10_1080}
+        mPortraitBGs = new int[][]{
+                new int[]{R.drawable.p1_480, R.drawable.p2_480, R.drawable.p3_480,
+                        R.drawable.p4_480, R.drawable.p5_480, R.drawable.p6_480,
+                        R.drawable.p7_480, R.drawable.p8_480, R.drawable.p9_480,
+                        R.drawable.p10_480},
+                new int[]{R.drawable.p1_720, R.drawable.p2_720, R.drawable.p3_720,
+                        R.drawable.p4_720, R.drawable.p5_720, R.drawable.p6_720,
+                        R.drawable.p7_720, R.drawable.p8_720, R.drawable.p9_720,
+                        R.drawable.p10_720},
+                new int[]{R.drawable.p1_1080, R.drawable.p2_1080,
+                        R.drawable.p3_1080, R.drawable.p4_1080,
+                        R.drawable.p5_1080, R.drawable.p6_1080,
+                        R.drawable.p7_1080, R.drawable.p8_1080,
+                        R.drawable.p9_1080, R.drawable.p10_1080}
         };
     }
 
@@ -104,24 +116,48 @@ public final class LoadBitmapTask implements Runnable {
      * Acquire a bitmap to show
      * <p>If there is no cached bitmap, it will load one immediately</p>
      *
+     * @param number
      * @return bitmap
      */
-    public Bitmap getBitmap() {
-        Bitmap b = null;
-        synchronized (this) {
-            if (mQueue.size() > 0) {
-                b = mQueue.pop();
+
+    public void loadBitmaps(final int number, final Runnable callback) {
+        mThreadPool.submit(new Runnable() {
+            @Override public void run() {
+                loadBitmap(number - 1);
+                callback.run();
+                recycleRest(number);
             }
+        });
+        mThreadPool.submit(new Runnable() {
+            @Override public void run() {
+                loadBitmap(number);
+                callback.run();
+                recycleRest(number);
+            }
+        });
+        mThreadPool.submit(new Runnable() {
+            @Override public void run() {
+                loadBitmap(number + 1);
+                callback.run();
+                recycleRest(number);
+            }
+        });
+    }
 
-            notify();
-        }
-
+    private void loadBitmap(int number) {
+        Bitmap b = mCache.get(number);
         if (b == null) {
-            Log.d(TAG, "Load bitmap instantly!");
-            b = getRandomBitmap();
+            Log.d("Default", "ACTUALLY LOADING BITMAP");
+            SystemClock.sleep(1000);
+            b = getRandomBitmap(number);
+            mCache.put(number, b);
+        } else {
+            Log.d("Default", "IN CACHE");
         }
+    }
 
-        return b;
+    public Bitmap getBitmap(int number) {
+        return mCache.get(number);
     }
 
     /**
@@ -161,8 +197,7 @@ public final class LoadBitmapTask implements Runnable {
             Log.d(TAG, "Waiting thread to stop ...");
             try {
                 Thread.sleep(500);
-            }
-            catch (InterruptedException e) {
+            } catch (InterruptedException e) {
 
             }
         }
@@ -175,18 +210,17 @@ public final class LoadBitmapTask implements Runnable {
     /**
      * Set bitmap width , height and maximum size of cache queue
      *
-     * @param w width of bitmap
-     * @param h height of bitmap
+     * @param w         width of bitmap
+     * @param h         height of bitmap
      * @param maxCached maximum size of cache queue
      */
     public void set(int w, int h, int maxCached) {
         int newIndex = LARGE_BG;
         if ((w <= 480 && h <= 854) ||
-            (w <= 854 && h <= 480)) {
+                (w <= 854 && h <= 480)) {
             mBGSizeIndex = SMALL_BG;
-        }
-        else if ((w <= 800 && h <= 1280) ||
-                 (h <= 800 && w <= 1280)) {
+        } else if ((w <= 800 && h <= 1280) ||
+                (h <= 800 && w <= 1280)) {
             mBGSizeIndex = MEDIUM_BG;
         }
 
@@ -208,22 +242,29 @@ public final class LoadBitmapTask implements Runnable {
     /**
      * Load bitmap from resources randomly
      *
+     * @param bitmapId
      * @return bitmap object
      */
-    private Bitmap getRandomBitmap() {
-        int newNo = mPreRandomNo;
-        while (newNo == mPreRandomNo) {
-            newNo = mBGRandom.nextInt(BG_COUNT);
-        }
-
-        mPreRandomNo = newNo;
+    private Bitmap getRandomBitmap(Integer bitmapId) {
+        Log.d("Default", "requesting=" + bitmapId);
+        int newNo = bitmapId;
+//        int newNo = mPreRandomNo;
+//        while (newNo == mPreRandomNo) {
+//            newNo = mBGRandom.nextInt(BG_COUNT);
+//        }
+//
+//        mPreRandomNo = newNo;
+        newNo = Math.min(mPortraitBGs[mBGSizeIndex].length - 1, Math.max(bitmapId, 0));
         int resId = mPortraitBGs[mBGSizeIndex][newNo];
-        Bitmap b = BitmapFactory.decodeResource(mResources, resId);
+        BitmapFactory.Options opts = new BitmapFactory.Options();
+        opts.inSampleSize = 2;
+        Bitmap b = BitmapFactory.decodeResource(mResources, resId, opts);
+        Log.d("Default", "ACTUALLY DECODING");
         if (mIsLandscape) {
             Matrix matrix = new Matrix();
             matrix.postRotate(90);
             Bitmap lb = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(),
-                                    matrix, true);
+                    matrix, true);
             b.recycle();
             return lb;
         }
@@ -235,10 +276,10 @@ public final class LoadBitmapTask implements Runnable {
      * Clear cache queue
      */
     private void cleanQueue() {
-        for (int i = 0; i < mQueue.size(); ++i) {
-            mQueue.get(i).recycle();
-        }
-        mQueue.clear();
+//        for (int i = 0; i < mQueue.size(); ++i) {
+//            mQueue.get(i).recycleRest();
+//        }
+//        mQueue.clear();
     }
 
     public void run() {
@@ -250,21 +291,39 @@ public final class LoadBitmapTask implements Runnable {
                     break;
                 }
 
-                // load bitmap only when no cached bitmap in queue
-                int size = mQueue.size();
-                if (size < 1) {
-                    for (int i = 0; i < mQueueMaxSize; ++i) {
-                        Log.d(TAG, "Load Queue:" + i + " in background!");
-                        mQueue.push(getRandomBitmap());
-                    }
+                while (mTaskmQueue.peek() != null) {
+                    Integer bitmapId = mTaskmQueue.poll();
+                    mCache.put(bitmapId, getRandomBitmap(bitmapId));
                 }
+
+//                // load bitmap only when no cached bitmap in queue
+//                int size = mQueue.size();
+//                if (size < 1) {
+//                    for (int i = 0; i < mQueueMaxSize; ++i) {
+//                        Log.d(TAG, "Load Queue:" + i + " in background!");
+//                        mQueue.push(getRandomBitmap(bitmapId));
+//                    }
+//                }
 
                 // wait to be awaken
                 try {
                     wait();
+                } catch (InterruptedException e) {
                 }
-                catch (InterruptedException e) {
+            }
+        }
+    }
+
+    public void recycleRest(int pageNo) {
+        for (Iterator<Map.Entry<Integer, Bitmap>> it = mCache.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<Integer, Bitmap> entry = it.next();
+            Integer key = entry.getKey();
+            if (key != pageNo - 1 && key != pageNo && key != pageNo + 1) {
+                Bitmap bitmap = entry.getValue();
+                if (bitmap != null) {
+                    bitmap.recycle();
                 }
+                it.remove();
             }
         }
     }

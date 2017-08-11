@@ -214,6 +214,8 @@ public class Page {
     private int[] mUnusedTexIDs;
     // actual size of mUnusedTexIDs
     private int mUnusedTexSize;
+    private boolean mFirstBitmapLoading;
+    private boolean mSecondaryBitmapLoading;
 
     /**
      * Constructor
@@ -316,6 +318,14 @@ public class Page {
      */
     public boolean isSecondTextureSet() {
         return mTexIDs[SECOND_TEXTURE_ID] != INVALID_TEXTURE_ID;
+    }
+
+    public boolean isFirstBitmapLoading() {
+        return mFirstBitmapLoading;
+    }
+
+    public boolean isSecondaryBitmapLoading() {
+        return mSecondaryBitmapLoading;
     }
 
     /**
@@ -560,7 +570,8 @@ public class Page {
      *
      * @param b Bitmap object for creating texture
      */
-    public void setFirstTexture(Bitmap b) {
+    public void setFirstTexture(Bitmap b, boolean loadingBitmap) {
+        mFirstBitmapLoading = loadingBitmap;
         // compute mask color
         int color = PageFlipUtils.computeAverageColor(b, 30);
         maskColor[FIRST_TEXTURE_ID][0] = Color.red(color) / 255.0f;
@@ -580,7 +591,8 @@ public class Page {
      *
      * @param b Bitmap object for creating texture
      */
-    public void setSecondTexture(Bitmap b) {
+    public void setSecondTexture(Bitmap b, boolean loadingBitmap) {
+        mFirstBitmapLoading = loadingBitmap;
         // compute mask color
         int color = PageFlipUtils.computeAverageColor(b, 30);
         maskColor[SECOND_TEXTURE_ID][0] = Color.red(color) / 255.0f;

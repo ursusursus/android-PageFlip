@@ -72,10 +72,10 @@ public class PageFlipView extends GLSurfaceView implements Renderer {
         setEGLContextClientVersion(2);
 
         // init others
-        mPageNo = 1;
+        mPageNo = 0;
         mDrawLock = new ReentrantLock();
         mPageRender = new SinglePageRender(context, mPageFlip,
-                                           mHandler, mPageNo);
+                                           mHandler, mPageNo, this);
         // configure render
         setRenderer(this);
         setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
@@ -113,7 +113,7 @@ public class PageFlipView extends GLSurfaceView implements Renderer {
                     mPageRender = new SinglePageRender(getContext(),
                                                        mPageFlip,
                                                        mHandler,
-                                                       mPageNo);
+                                                       mPageNo, this);
                     mPageRender.onSurfaceChanged(mPageFlip.getSurfaceWidth(),
                                                  mPageFlip.getSurfaceHeight());
                 }
@@ -265,7 +265,7 @@ public class PageFlipView extends GLSurfaceView implements Renderer {
                 mPageRender = new SinglePageRender(getContext(),
                                                    mPageFlip,
                                                    mHandler,
-                                                   pageNo);
+                                                   pageNo, this);
             }
 
             // let page render handle surface change
